@@ -1,5 +1,9 @@
 # Changes
 
+## 0.1.3
+
+* Fixed http_ece, remove rust-ece.
+
 ## 0.1.2
 
 * Fixed rsa verifying.

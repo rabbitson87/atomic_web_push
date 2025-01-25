@@ -349,7 +349,7 @@ mod tests {
 
         assert_eq!(
             "BMo1HqKF6skMZYykrte9duqYwBD08mDQKTunRkJdD3sTJ9E-yyN6sJlPWTpKNhp-y2KeS6oANHF-q3w37bClb7U".to_string(),
-            String::from_utf8(general_purpose::URL_SAFE_NO_PAD.decode(&signature.auth_k).unwrap()).unwrap()
+            general_purpose::URL_SAFE_NO_PAD.encode(&signature.auth_k)
         );
 
         assert!(!signature.auth_t.is_empty());
@@ -362,7 +362,7 @@ mod tests {
 
         assert_eq!(
             "BMo1HqKF6skMZYykrte9duqYwBD08mDQKTunRkJdD3sTJ9E-yyN6sJlPWTpKNhp-y2KeS6oANHF-q3w37bClb7U".to_string(),
-            String::from_utf8(general_purpose::URL_SAFE_NO_PAD.decode(&signature.auth_k).unwrap()).unwrap()
+            general_purpose::URL_SAFE_NO_PAD.encode(&signature.auth_k)
         );
 
         assert!(!signature.auth_t.is_empty());
@@ -380,7 +380,7 @@ mod tests {
 
         assert_eq!(
             "BMjQIp55pdbU8pfCBKyXcZjlmER_mXt5LqNrN1hrXbdBS5EnhIbMu3Au-RV53iIpztzNXkGI56BFB1udQ8Bq_H4".to_string(),
-            String::from_utf8(general_purpose::URL_SAFE_NO_PAD.decode(&signature.auth_k).unwrap()).unwrap()
+            general_purpose::URL_SAFE_NO_PAD.encode(&signature.auth_k)
         );
 
         assert!(!signature.auth_t.is_empty());

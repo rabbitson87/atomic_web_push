@@ -61,6 +61,7 @@ pub use base64::{engine, Engine};
 
 pub mod clients;
 pub mod common;
+pub mod ece;
 pub mod error;
 pub mod http_ece;
 pub mod message;
