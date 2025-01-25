@@ -62,6 +62,8 @@ impl<'a> HttpEce<'a> {
         if content.len() > 3052 {
             return Err(WebPushError::PayloadTooLarge);
         }
+        let mut padded_content = content.to_vec();
+        padded_content.extend_from_slice(&vec![0u8; 123]);
 
         let salt = rand::random::<[u8; 16]>();
 
@@ -72,8 +74,8 @@ impl<'a> HttpEce<'a> {
                     self.peer_secret,
                     salt,
                     self.peer_public_key,
-                    vec![content.to_vec()].into_iter(),
-                    4096,
+                    vec![padded_content].into_iter(),
+                    230,
                 );
 
                 let mut headers = vec![];
@@ -109,8 +111,8 @@ impl<'a> HttpEce<'a> {
                         self.peer_secret,
                         salt,
                         self.peer_public_key,
-                        vec![content.to_vec()].into_iter(),
-                        4096,
+                        vec![padded_content].into_iter(),
+                        230,
                     );
 
                     self.add_vapid_headers(&mut headers);

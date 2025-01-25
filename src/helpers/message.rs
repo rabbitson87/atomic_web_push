@@ -187,10 +187,10 @@ impl<'a> WebPushMessageBuilder<'a> {
 
         use base64::engine;
         if let Some(payload) = self.payload {
-            let p256dh =
-                engine::general_purpose::URL_SAFE.decode(&self.subscription_info.keys.p256dh)?;
-            let auth =
-                engine::general_purpose::URL_SAFE.decode(&self.subscription_info.keys.auth)?;
+            let p256dh = engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(&self.subscription_info.keys.p256dh)?;
+            let auth = engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(&self.subscription_info.keys.auth)?;
 
             let http_ece = HttpEce::new(payload.encoding, &p256dh, &auth, self.vapid_signature);
 
