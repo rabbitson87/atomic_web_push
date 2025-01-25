@@ -1,5 +1,5 @@
 pub use crate::helpers::clients::request_builder;
-pub use crate::helpers::clients::WebPushClient;
+pub use crate::helpers::clients::{reqwest_client::ReqwestWebPushClient, WebPushClient};
 
 pub use crate::helpers::error::WebPushError;
 pub use crate::helpers::http_ece::ContentEncoding;
