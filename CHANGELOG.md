@@ -1,5 +1,9 @@
 # Changes
 
+## 0.1.2
+
+* Fixed rsa verifying.
+
 ## 0.1.1
 
 * Pub ReqwestWebPushClient.

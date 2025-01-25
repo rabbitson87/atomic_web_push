@@ -101,8 +101,10 @@ pub mod hash {
 }
 
 pub mod sign {
+    use hash::DigestType;
     use pkey::PKey;
     use rsa_fure::{Padding, Rsa};
+    use sha2::Digest;
 
     use super::*;
 
@@ -137,16 +139,51 @@ pub mod sign {
         }
 
         pub fn sign_to_vec(&self) -> Result<Vec<u8>, Error> {
-            let private_key = RsaPrivateKey::from(self.key.inner.as_ref().clone());
-            let mut rng = rand::thread_rng();
-            Ok(match self.padding {
-                Padding::PKCS1 => private_key
-                    .sign(rsa::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(), &self.message)?,
-                Padding::PKCS1_PSS => {
-                    let padding = rsa::pss::Pss::new::<rsa::sha2::Sha256>();
-                    private_key.sign_with_rng(&mut rng, padding, &self.message)?
+            use sha2::Digest;
+
+            let hashed = match self.digest.0 {
+                DigestType::Sha256 => {
+                    let mut hasher = sha2::Sha256::new();
+                    hasher.update(&self.message);
+                    hasher.finalize().to_vec()
                 }
-            })
+                DigestType::Sha384 => {
+                    let mut hasher = sha2::Sha384::new();
+                    hasher.update(&self.message);
+                    hasher.finalize().to_vec()
+                }
+                DigestType::Sha512 => {
+                    let mut hasher = sha2::Sha512::new();
+                    hasher.update(&self.message);
+                    hasher.finalize().to_vec()
+                }
+            };
+
+            let private_key = RsaPrivateKey::from(self.key.inner.as_ref().clone());
+            match (self.padding, self.digest.0.clone()) {
+                (Padding::PKCS1, DigestType::Sha256) => {
+                    private_key.sign(rsa::Pkcs1v15Sign::new::<sha2::Sha256>(), &hashed)
+                }
+                (Padding::PKCS1, DigestType::Sha384) => {
+                    private_key.sign(rsa::Pkcs1v15Sign::new::<sha2::Sha384>(), &hashed)
+                }
+                (Padding::PKCS1, DigestType::Sha512) => {
+                    private_key.sign(rsa::Pkcs1v15Sign::new::<sha2::Sha512>(), &hashed)
+                }
+                (Padding::PKCS1_PSS, DigestType::Sha256) => {
+                    let padding = rsa::pss::Pss::new::<sha2::Sha256>();
+                    private_key.sign_with_rng(&mut rand::thread_rng(), padding, &hashed)
+                }
+                (Padding::PKCS1_PSS, DigestType::Sha384) => {
+                    let padding = rsa::pss::Pss::new::<sha2::Sha384>();
+                    private_key.sign_with_rng(&mut rand::thread_rng(), padding, &hashed)
+                }
+                (Padding::PKCS1_PSS, DigestType::Sha512) => {
+                    let padding = rsa::pss::Pss::new::<sha2::Sha512>();
+                    private_key.sign_with_rng(&mut rand::thread_rng(), padding, &hashed)
+                }
+            }
+            .map_err(Error::from)
         }
     }
 
@@ -164,41 +201,85 @@ pub mod sign {
         ) -> Result<Self, Error> {
             Ok(Self {
                 key,
-                padding: crate::atomic_jwt::algorithms::rsa::Padding::PKCS1,
+                padding: Padding::PKCS1,
                 digest,
                 message: Vec::new(),
             })
         }
 
-        pub fn set_rsa_padding(
-            &mut self,
-            padding: crate::atomic_jwt::algorithms::rsa::Padding,
-        ) -> Result<(), Error> {
+        pub fn set_rsa_padding(&mut self, padding: Padding) -> Result<(), Error> {
             self.padding = padding;
             Ok(())
         }
 
         pub fn update(&mut self, _data: &[u8]) -> Result<(), Error> {
+            self.message = _data.to_vec();
             Ok(())
         }
 
         pub fn verify(&self, signature: &[u8]) -> Result<bool, Error> {
-            match self.padding {
-                crate::atomic_jwt::algorithms::rsa::Padding::PKCS1 => {
-                    RsaPublicKey::from(self.key.as_ref().as_ref().clone())
-                        .verify(
-                            rsa::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
-                            &[],
-                            signature,
-                        )
+            let hashed = match self.digest.0 {
+                DigestType::Sha256 => {
+                    let mut hasher = sha2::Sha256::new();
+                    hasher.update(&self.message);
+                    hasher.finalize().to_vec()
+                }
+                DigestType::Sha384 => {
+                    let mut hasher = sha2::Sha384::new();
+                    hasher.update(&self.message);
+                    hasher.finalize().to_vec()
+                }
+                DigestType::Sha512 => {
+                    let mut hasher = sha2::Sha512::new();
+                    hasher.update(&self.message);
+                    hasher.finalize().to_vec()
+                }
+            };
+
+            let public_key = RsaPublicKey::from(self.key.as_ref().as_ref().clone());
+            match (self.padding, self.digest.0.clone()) {
+                (Padding::PKCS1, DigestType::Sha256) => public_key
+                    .verify(
+                        rsa::Pkcs1v15Sign::new::<rsa::sha2::Sha256>(),
+                        &hashed,
+                        signature,
+                    )
+                    .map(|_| true)
+                    .or(Ok(false)),
+                (Padding::PKCS1, DigestType::Sha384) => public_key
+                    .verify(
+                        rsa::Pkcs1v15Sign::new::<rsa::sha2::Sha384>(),
+                        &hashed,
+                        signature,
+                    )
+                    .map(|_| true)
+                    .or(Ok(false)),
+                (Padding::PKCS1, DigestType::Sha512) => public_key
+                    .verify(
+                        rsa::Pkcs1v15Sign::new::<rsa::sha2::Sha512>(),
+                        &hashed,
+                        signature,
+                    )
+                    .map(|_| true)
+                    .or(Ok(false)),
+                (Padding::PKCS1_PSS, DigestType::Sha256) => {
+                    let padding = rsa::pss::Pss::new::<sha2::Sha256>();
+                    public_key
+                        .verify(padding, &hashed, signature)
                         .map(|_| true)
                         .or(Ok(false))
                 }
-                crate::atomic_jwt::algorithms::rsa::Padding::PKCS1_PSS => {
-                    let salt_len = 0;
-                    let padding = rsa::pss::Pss::new_with_salt::<rsa::sha2::Sha256>(salt_len);
-                    RsaPublicKey::from(self.key.as_ref().as_ref().clone())
-                        .verify(padding, &[], signature)
+                (Padding::PKCS1_PSS, DigestType::Sha384) => {
+                    let padding = rsa::pss::Pss::new::<sha2::Sha384>();
+                    public_key
+                        .verify(padding, &hashed, signature)
+                        .map(|_| true)
+                        .or(Ok(false))
+                }
+                (Padding::PKCS1_PSS, DigestType::Sha512) => {
+                    let padding = rsa::pss::Pss::new::<sha2::Sha512>();
+                    public_key
+                        .verify(padding, &hashed, signature)
                         .map(|_| true)
                         .or(Ok(false))
                 }
@@ -208,7 +289,7 @@ pub mod sign {
 }
 
 pub mod rsa_fure {
-    use pkcs1::DecodeRsaPublicKey;
+    use pkcs1::{DecodeRsaPrivateKey, DecodeRsaPublicKey};
     use pkcs8::{DecodePrivateKey, DecodePublicKey};
 
     use super::*;
@@ -295,8 +376,10 @@ pub mod rsa_fure {
         }
 
         pub fn private_key_from_pem(pem: &[u8]) -> Result<Self, Error> {
-            RsaPrivateKey::from_pkcs8_pem(core::str::from_utf8(pem)?)
-                .map(Private)
+            let string = std::str::from_utf8(pem)?;
+            RsaPrivateKey::from_pkcs8_pem(string)
+                .or_else(|_| RsaPrivateKey::from_pkcs1_pem(string))
+                .map(|key| Private { 0: key })
                 .map_err(Error::from)
         }
 
