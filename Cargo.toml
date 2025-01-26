@@ -1,6 +1,6 @@
 [package]
 name = "atomic_web_push"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["hsng95@gmail.com"]
 description = "A library that eliminates potential risks (occasional crashes due to OpenSSL library's setenv conflicts in Linux environments) from the web push library"
 homepage = "https://github.com/rabbitson87/atomic_web_push"

@@ -95,13 +95,13 @@ impl<'a> HttpEce<'a> {
                     let mut headers = vec![
                         (
                             "Encryption",
-                            format!("salt={}", general_purpose::URL_SAFE.encode(&salt)),
+                            format!("salt={}", general_purpose::URL_SAFE_NO_PAD.encode(&salt)),
                         ),
                         (
                             "Crypto-Key",
                             format!(
                                 "dh={}",
-                                general_purpose::URL_SAFE.encode(self.peer_public_key)
+                                general_purpose::URL_SAFE_NO_PAD.encode(self.peer_public_key)
                             ),
                         ),
                     ];
@@ -132,13 +132,10 @@ impl<'a> HttpEce<'a> {
     fn add_vapid_headers(&self, headers: &mut Vec<(&str, String)>) {
         //VAPID uses a special Authorisation header, which contains a ecdhsa key and a jwt.
         if let Some(signature) = &self.vapid_signature {
+            let public_key = general_purpose::URL_SAFE_NO_PAD.encode(&signature.auth_k);
             headers.push((
                 "Authorization",
-                format!(
-                    "vapid t={}, k={}",
-                    signature.auth_t,
-                    general_purpose::URL_SAFE.encode(&signature.auth_k)
-                ),
+                format!("vapid t={}, k={}", signature.auth_t, public_key),
             ));
         }
     }

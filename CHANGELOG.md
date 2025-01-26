@@ -1,5 +1,9 @@
 # Changes
 
+## 0.1.7
+
+* Add no padding for headers encrypt.
+
 ## 0.1.6
 
 * Remove no padding for headers encrypt.
