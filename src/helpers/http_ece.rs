@@ -95,13 +95,13 @@ impl<'a> HttpEce<'a> {
                     let mut headers = vec![
                         (
                             "Encryption",
-                            format!("salt={}", general_purpose::URL_SAFE_NO_PAD.encode(&salt)),
+                            format!("salt={}", general_purpose::URL_SAFE.encode(&salt)),
                         ),
                         (
                             "Crypto-Key",
                             format!(
                                 "dh={}",
-                                general_purpose::URL_SAFE_NO_PAD.encode(self.peer_public_key)
+                                general_purpose::URL_SAFE.encode(self.peer_public_key)
                             ),
                         ),
                     ];
@@ -137,7 +137,7 @@ impl<'a> HttpEce<'a> {
                 format!(
                     "vapid t={}, k={}",
                     signature.auth_t,
-                    general_purpose::URL_SAFE_NO_PAD.encode(&signature.auth_k)
+                    general_purpose::URL_SAFE.encode(&signature.auth_k)
                 ),
             ));
         }

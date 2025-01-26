@@ -1,5 +1,9 @@
 # Changes
 
+## 0.1.6
+
+* Remove no padding for headers encrypt.
+
 ## 0.1.5
 
 * Add padding logic for ece encrypt.

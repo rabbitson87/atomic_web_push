@@ -113,7 +113,7 @@ fn encrypt_record<B: aes_gcm::aead::Buffer>(
             .map_err(|_| Error::Aes128Gcm)?;
         if use_padding {
             record
-                .extend_from_slice(&vec![0u8; pad_len as usize])
+                .extend_from_slice(&vec![0u8; pad_len as usize - 1])
                 .map_err(|_| Error::Aes128Gcm)?;
         }
     } else {
