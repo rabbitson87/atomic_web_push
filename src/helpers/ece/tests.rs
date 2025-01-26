@@ -56,8 +56,15 @@ mod rfc8188_example1 {
 
     #[test]
     fn test_encryption() {
-        let encrypted =
-            encrypt(*IKM, *SALT, KEYID, Some(PLAINTEXT.to_vec()).into_iter(), RS).unwrap();
+        let encrypted = encrypt(
+            *IKM,
+            *SALT,
+            KEYID,
+            Some(PLAINTEXT.to_vec()).into_iter(),
+            RS,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(encrypted.len(), ENCRYPTED.len());
         assert_eq!(encrypted[..16], ENCRYPTED[..16]);
@@ -71,9 +78,16 @@ mod rfc8188_example1 {
 
     #[test]
     fn test_encryption_decryption() {
-        let encrypted =
-            encrypt(*IKM, *SALT, KEYID, Some(PLAINTEXT.to_vec()).into_iter(), RS).unwrap();
-        let decrypted = decrypt(*IKM, encrypted).unwrap();
+        let encrypted = encrypt(
+            *IKM,
+            *SALT,
+            KEYID,
+            Some(PLAINTEXT.to_vec()).into_iter(),
+            RS,
+            false,
+        )
+        .unwrap();
+        let decrypted = decrypt(*IKM, encrypted, Some(PLAINTEXT.to_vec().len())).unwrap();
 
         assert_eq!(decrypted, PLAINTEXT.to_vec());
     }
@@ -98,6 +112,7 @@ mod rfc8188_example2 {
             &*KEYID,
             vec![PLAINTEXT[..7].to_vec(), PLAINTEXT[7..7 + 8].to_vec()].into_iter(),
             RS,
+            false,
         )
         .unwrap();
 
@@ -119,10 +134,20 @@ mod rfc8188_example2 {
             &*KEYID,
             vec![PLAINTEXT[..7].to_vec(), PLAINTEXT[7..7 + 8].to_vec()].into_iter(),
             RS,
+            false,
         )
         .unwrap();
-        let decrypted = decrypt(*IKM, encrypted).unwrap();
+        let decrypted = decrypt(*IKM, encrypted, Some(PLAINTEXT.to_vec().len())).unwrap();
 
-        assert_eq!(decrypted, PLAINTEXT.to_vec());
+        assert_eq!(
+            decrypted,
+            vec![
+                PLAINTEXT[..7].to_vec(),
+                vec![1_u8],
+                PLAINTEXT[7..7 + 8].to_vec(),
+                vec![2_u8]
+            ]
+            .concat()
+        );
     }
 }

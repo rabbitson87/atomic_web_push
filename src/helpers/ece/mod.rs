@@ -86,8 +86,11 @@ fn encrypt_record<B: aes_gcm::aead::Buffer>(
     nonce: &Nonce<U12>,
     mut record: B,
     encrypted_record_size: u32,
+    keyid_len: u32,
+    use_padding: bool,
     is_last: bool,
 ) -> Result<B, Error> {
+    let adjusted_size = encrypted_record_size - 21 - keyid_len;
     let plain_record_size: u32 = record
         .len()
         .try_into()
@@ -98,9 +101,21 @@ fn encrypt_record<B: aes_gcm::aead::Buffer>(
     }
 
     if is_last {
+        let pad_len = {
+            if adjusted_size < plain_record_size + 16 {
+                1
+            } else {
+                adjusted_size - plain_record_size - 16
+            }
+        };
         record
             .extend_from_slice(b"\x02")
             .map_err(|_| Error::Aes128Gcm)?;
+        if use_padding {
+            record
+                .extend_from_slice(&vec![0u8; pad_len as usize])
+                .map_err(|_| Error::Aes128Gcm)?;
+        }
     } else {
         let pad_len = encrypted_record_size - plain_record_size - 16;
         record
@@ -131,8 +146,11 @@ pub fn encrypt<IKM: AsRef<[u8]>, KI: AsRef<[u8]>, R: Iterator<Item = Vec<u8>>>(
     keyid: KI,
     records: R,
     encrypted_record_size: u32,
+    use_padding: bool,
 ) -> Result<Vec<u8>, Error> {
     let header = generate_encryption_header(salt, encrypted_record_size, keyid.as_ref())?;
+
+    let keyid_len = keyid.as_ref().len() as u32;
 
     let records = records.enumerate().map(|(n, record)| {
         let mut seq = [0u8; 12];
@@ -148,7 +166,15 @@ pub fn encrypt<IKM: AsRef<[u8]>, KI: AsRef<[u8]>, R: Iterator<Item = Vec<u8>>>(
     let mut peekable = records.peekable();
     while let Some((key, nonce, record)) = peekable.next() {
         let is_last_record = peekable.peek().is_none();
-        let record = encrypt_record(&key, &nonce, record, encrypted_record_size, is_last_record)?;
+        let record = encrypt_record(
+            &key,
+            &nonce,
+            record,
+            encrypted_record_size,
+            keyid_len,
+            use_padding,
+            is_last_record,
+        )?;
         output.extend_from_slice(&record);
     }
 
@@ -160,6 +186,7 @@ fn decrypt_record<'a>(
     nonce: &Nonce<U12>,
     record: &'a mut [u8],
     is_last: bool,
+    expected_size: Option<usize>,
 ) -> Result<&'a [u8], Error> {
     if record.len() < <Aes128Gcm as aes_gcm::AeadCore>::TagSize::to_usize() {
         return Err(Error::RecordLengthInvalid);
@@ -171,15 +198,22 @@ fn decrypt_record<'a>(
         .decrypt_in_place_detached(nonce, b"", msg, Tag::<Aes128Gcm>::from_slice(tag))
         .map_err(|_| Error::Aes128Gcm)?;
 
-    let pad_index = msg
-        .as_ref()
-        .iter()
-        .rposition(|it| *it != 0)
-        .ok_or(Error::PaddingInvalid)?;
+    let pad_index = if let Some(size) = expected_size {
+        msg.as_ref()
+            .iter()
+            .take(size)
+            .rposition(|it| *it != 0)
+            .ok_or(Error::PaddingInvalid)?
+    } else {
+        msg.as_ref()
+            .iter()
+            .rposition(|it| *it != 0)
+            .ok_or(Error::PaddingInvalid)?
+    };
     match msg[pad_index] {
         2 if !is_last => Err(Error::PaddingInvalid),
         1 if is_last => Err(Error::PaddingInvalid),
-        _ => Ok(&msg[..pad_index]),
+        _ => Ok(&msg[..pad_index + 1]),
     }
 }
 
@@ -187,6 +221,7 @@ fn decrypt_record<'a>(
 pub fn decrypt<IKM: AsRef<[u8]>>(
     ikm: IKM,
     mut encrypted_message: Vec<u8>,
+    expected_size: Option<usize>,
 ) -> Result<Vec<u8>, Error> {
     if encrypted_message.len() < 21 {
         return Err(Error::HeaderLengthInvalid);
@@ -227,7 +262,7 @@ pub fn decrypt<IKM: AsRef<[u8]>>(
     let mut peekable = records.peekable();
     while let Some((key, nonce, record)) = peekable.next() {
         let is_last_record = peekable.peek().is_none();
-        let plaintext = decrypt_record(&key, &nonce, record, is_last_record)?;
+        let plaintext = decrypt_record(&key, &nonce, record, is_last_record, expected_size)?;
         output.extend_from_slice(plaintext)
     }
 

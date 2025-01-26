@@ -1,5 +1,9 @@
 # Changes
 
+## 0.1.5
+
+* Add padding logic for ece encrypt.
+
 ## 0.1.4
 
 * Fixed http_ece, message files.

@@ -62,8 +62,6 @@ impl<'a> HttpEce<'a> {
         if content.len() > 3052 {
             return Err(WebPushError::PayloadTooLarge);
         }
-        let mut padded_content = content.to_vec();
-        padded_content.extend_from_slice(&vec![0u8; 123]);
 
         let salt = rand::random::<[u8; 16]>();
 
@@ -74,8 +72,9 @@ impl<'a> HttpEce<'a> {
                     self.peer_secret,
                     salt,
                     self.peer_public_key,
-                    vec![padded_content].into_iter(),
+                    vec![content.to_vec()].into_iter(),
                     230,
+                    true,
                 );
 
                 let mut headers = vec![];
@@ -111,8 +110,9 @@ impl<'a> HttpEce<'a> {
                         self.peer_secret,
                         salt,
                         self.peer_public_key,
-                        vec![padded_content].into_iter(),
+                        vec![content.to_vec()].into_iter(),
                         230,
+                        true,
                     );
 
                     self.add_vapid_headers(&mut headers);
@@ -202,11 +202,10 @@ mod tests {
     fn test_payload_encrypts_128() {
         let test_keys = generate_test_keypair();
 
-        let secret_key = test_keys.secret_key.to_bytes();
         let http_ece = HttpEce::new(
             ContentEncoding::Aes128Gcm,
             &test_keys.public_key,
-            secret_key.as_ref(),
+            &test_keys.auth,
             None,
         );
         let plaintext = "Hello world!";
@@ -214,7 +213,12 @@ mod tests {
 
         assert_ne!(plaintext.as_bytes(), ciphertext.content);
 
-        let decrypted = decrypt::<&[u8]>(secret_key.as_ref(), ciphertext.content).unwrap();
+        let decrypted = decrypt::<&[u8]>(
+            &test_keys.auth,
+            ciphertext.content,
+            Some(plaintext.as_bytes().len()),
+        )
+        .unwrap();
         assert_eq!(String::from_utf8(decrypted).unwrap(), plaintext)
     }
 
@@ -222,11 +226,10 @@ mod tests {
     #[test]
     fn test_payload_encrypts() {
         let test_keys = generate_test_keypair();
-        let secret_key = test_keys.secret_key.to_bytes();
         let http_ece = HttpEce::new(
             ContentEncoding::AesGcm,
             &test_keys.public_key,
-            secret_key.as_ref(),
+            &test_keys.auth,
             None,
         );
         let plaintext = "Hello world!";
@@ -234,7 +237,12 @@ mod tests {
 
         assert_ne!(plaintext.as_bytes(), ciphertext.content);
 
-        let decrypted = decrypt::<&[u8]>(secret_key.as_ref(), ciphertext.content).unwrap();
+        let decrypted = decrypt::<&[u8]>(
+            &test_keys.auth,
+            ciphertext.content,
+            Some(plaintext.as_bytes().len()),
+        )
+        .unwrap();
         assert_eq!(String::from_utf8(decrypted).unwrap(), plaintext);
     }
 
