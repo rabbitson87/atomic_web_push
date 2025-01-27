@@ -1,5 +1,9 @@
 # Changes
 
+## 0.2.0
+
+* Change http_ece into original, add ece_crypto module.
+
 ## 0.1.7
 
 * Add no padding for headers encrypt.

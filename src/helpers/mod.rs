@@ -46,22 +46,9 @@
 //! # }
 //! ```
 
-pub use crate::helpers::clients::request_builder;
-pub use crate::helpers::clients::WebPushClient;
-
-pub use crate::helpers::error::WebPushError;
-pub use crate::helpers::http_ece::ContentEncoding;
-pub use crate::helpers::message::{
-    SubscriptionInfo, SubscriptionKeys, Urgency, WebPushMessage, WebPushMessageBuilder,
-    WebPushPayload,
-};
-pub use crate::helpers::vapid::builder::PartialVapidSignatureBuilder;
-pub use crate::helpers::vapid::{VapidSignature, VapidSignatureBuilder};
-pub use base64::{engine, Engine};
-
 pub mod clients;
 pub mod common;
-pub mod ece;
+pub mod crypto;
 pub mod error;
 pub mod http_ece;
 pub mod message;

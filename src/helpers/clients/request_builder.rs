@@ -94,28 +94,64 @@ pub fn parse_response(response_status: StatusCode, body: Vec<u8>) -> Result<(), 
 
 #[cfg(test)]
 mod tests {
+    use base64::engine;
     use http::{StatusCode, Uri};
+    use lazy_static::lazy_static;
 
     use crate::helpers::clients::request_builder::*;
     use crate::helpers::clients::request_builder::{build_request, parse_response};
     use crate::helpers::error::WebPushError;
     use crate::helpers::http_ece::ContentEncoding;
     use crate::helpers::message::WebPushMessageBuilder;
-    use crate::helpers::Urgency;
+    use crate::{
+        ReqwestWebPushClient, SubscriptionInfo, Urgency, VapidSignatureBuilder, WebPushClient,
+    };
+
+    lazy_static! {
+        static ref SUBSCRIPTION_INFO: SubscriptionInfo =
+            serde_json::from_value(
+                serde_json::json!({"endpoint":"https://fcm.googleapis.com/fcm/send/eKClHsXFm9E:APA91bH2x3gNOMv4dF1lQfCgIfOet8EngqKCAUS5DncLOd5hzfSUxcjigIjw9ws-bqa-KmohqiTOcgepAIVO03N39dQfkEkopubML_m3fyvF03pV9_JCB7SxpUjcFmBSVhCaWS6m8l7x",
+                "expirationTime":null,
+                "keys":{"p256dh":
+                    "BGa4N1PI79lboMR_YrwCiCsgp35DRvedt7opHcf0yM3iOBTSoQYqQLwWxAfRKE6tsDnReWmhsImkhDF_DBdkNSU",
+                    "auth":"EvcWjEgzr4rbvhfi3yds0A"}
+                })
+            ).unwrap();
+    }
+
+    static PRIVATE_BASE64: &str = "IQ9Ur0ykXoHS9gzfYX0aBjy9lvdrjx_PFUXmie9YRcY";
+
+    #[tokio::test]
+    async fn send_a_message() {
+        let message = serde_json::json!({
+            "title": "title",
+            "body": "data",
+            "url": "https://google.com",
+        });
+
+        let sig_builder = VapidSignatureBuilder::from_base64_no_sub(
+            &PRIVATE_BASE64,
+            engine::general_purpose::URL_SAFE_NO_PAD,
+        )
+        .unwrap()
+        .add_sub_info(&SUBSCRIPTION_INFO)
+        .build()
+        .unwrap();
+
+        let payload = serde_json::to_string(&message).unwrap();
+
+        let mut builder = WebPushMessageBuilder::new(&SUBSCRIPTION_INFO);
+        builder.set_vapid_signature(sig_builder);
+        builder.set_payload(ContentEncoding::Aes128Gcm, payload.as_bytes());
+
+        let client = ReqwestWebPushClient::new();
+
+        client.send(builder.build().unwrap()).await.unwrap();
+    }
 
     #[test]
     fn builds_a_correct_request_with_empty_payload() {
-        //This *was* a real token
-        let sub = serde_json::json!({"endpoint":"https://fcm.googleapis.com/fcm/send/eKClHsXFm9E:APA91bH2x3gNOMv4dF1lQfCgIfOet8EngqKCAUS5DncLOd5hzfSUxcjigIjw9ws-bqa-KmohqiTOcgepAIVO03N39dQfkEkopubML_m3fyvF03pV9_JCB7SxpUjcFmBSVhCaWS6m8l7x",
-            "expirationTime":null,
-            "keys":{"p256dh":
-                "BGa4N1PI79lboMR_YrwCiCsgp35DRvedt7opHcf0yM3iOBTSoQYqQLwWxAfRKE6tsDnReWmhsImkhDF_DBdkNSU",
-                "auth":"EvcWjEgzr4rbvhfi3yds0A"}
-        });
-
-        let info = serde_json::from_value(sub).unwrap();
-
-        let mut builder = WebPushMessageBuilder::new(&info);
+        let mut builder = WebPushMessageBuilder::new(&SUBSCRIPTION_INFO);
 
         builder.set_ttl(420);
         builder.set_urgency(Urgency::VeryLow);
@@ -135,18 +171,17 @@ mod tests {
 
     #[test]
     fn builds_a_correct_request_with_payload() {
-        //This *was* a real token
-        let sub = serde_json::json!({"endpoint":"https://fcm.googleapis.com/fcm/send/eKClHsXFm9E:APA91bH2x3gNOMv4dF1lQfCgIfOet8EngqKCAUS5DncLOd5hzfSUxcjigIjw9ws-bqa-KmohqiTOcgepAIVO03N39dQfkEkopubML_m3fyvF03pV9_JCB7SxpUjcFmBSVhCaWS6m8l7x",
-            "expirationTime":null,
-            "keys":{"p256dh":
-                "BGa4N1PI79lboMR_YrwCiCsgp35DRvedt7opHcf0yM3iOBTSoQYqQLwWxAfRKE6tsDnReWmhsImkhDF_DBdkNSU",
-                "auth":"EvcWjEgzr4rbvhfi3yds0A"}
-        });
+        let mut builder = WebPushMessageBuilder::new(&SUBSCRIPTION_INFO);
 
-        let info = serde_json::from_value(sub).unwrap();
-
-        let mut builder = WebPushMessageBuilder::new(&info);
-
+        let sig_builder = VapidSignatureBuilder::from_base64_no_sub(
+            &PRIVATE_BASE64,
+            engine::general_purpose::URL_SAFE_NO_PAD,
+        )
+        .unwrap()
+        .add_sub_info(&SUBSCRIPTION_INFO)
+        .build()
+        .unwrap();
+        builder.set_vapid_signature(sig_builder);
         builder.set_payload(ContentEncoding::Aes128Gcm, "test".as_bytes());
 
         let request = build_request::<reqwest::Body>(builder.build().unwrap());

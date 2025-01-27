@@ -24,13 +24,13 @@ impl VapidKey {
 mod tests {
     use std::fs::File;
 
-    use crate::helpers::vapid::key::VapidKey;
+    use crate::{helpers::vapid::key::VapidKey, VapidSignatureBuilder};
 
     #[test]
     /// Tests that VapidKey derives the correct public key.
     fn test_public_key_derivation() {
         let f = File::open("resources/vapid_test_key.pem").unwrap();
-        let key = crate::helpers::VapidSignatureBuilder::read_pem(f).unwrap();
+        let key = VapidSignatureBuilder::read_pem(f).unwrap();
         let key = VapidKey::new(key);
 
         assert_eq!(
@@ -48,7 +48,7 @@ mod tests {
     /// Tests that VapidKey clones properly.
     fn test_key_clones() {
         let f = File::open("resources/vapid_test_key.pem").unwrap();
-        let key = crate::helpers::VapidSignatureBuilder::read_pem(f).unwrap();
+        let key = VapidSignatureBuilder::read_pem(f).unwrap();
         let key = VapidKey::new(key);
 
         let key2 = key.clone();

@@ -1,12 +1,19 @@
 //! Payload encryption algorithm
 
-use crate::helpers::ece::encrypt;
-use base64::engine::general_purpose;
-use base64::Engine;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::OnceLock;
 
-use crate::helpers::error::WebPushError;
-use crate::helpers::message::WebPushPayload;
-use crate::helpers::vapid::VapidSignature;
+use base64::{engine, Engine};
+use ece::crypto::set_boxed_cryptographer;
+use ece::encrypt;
+
+use crate::VapidSignature;
+use crate::WebPushError;
+use crate::WebPushPayload;
+
+use super::crypto::LocalCryptographer;
 
 /// Content encoding profiles.
 #[derive(Debug, PartialEq, Copy, Clone, Default)]
@@ -36,6 +43,11 @@ pub struct HttpEce<'a> {
     vapid_signature: Option<VapidSignature>,
 }
 
+fn is_initialize() -> &'static Arc<AtomicBool> {
+    static BUILDER: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+    BUILDER.get_or_init(|| Arc::new(AtomicBool::new(false)))
+}
+
 impl<'a> HttpEce<'a> {
     /// Create a new encryptor.
     ///
@@ -47,6 +59,10 @@ impl<'a> HttpEce<'a> {
         peer_secret: &'a [u8],
         vapid_signature: Option<VapidSignature>,
     ) -> HttpEce<'a> {
+        if is_initialize().load(Ordering::Relaxed) == false {
+            is_initialize().store(true, Ordering::Relaxed);
+            set_boxed_cryptographer(Box::new(LocalCryptographer)).unwrap();
+        }
         HttpEce {
             peer_public_key,
             peer_secret,
@@ -63,21 +79,12 @@ impl<'a> HttpEce<'a> {
             return Err(WebPushError::PayloadTooLarge);
         }
 
-        let salt = rand::random::<[u8; 16]>();
-
         //Add more encoding standards to this match as they are created.
         match self.encoding {
             ContentEncoding::Aes128Gcm => {
-                let result = encrypt(
-                    self.peer_secret,
-                    salt,
-                    self.peer_public_key,
-                    vec![content.to_vec()].into_iter(),
-                    230,
-                    true,
-                );
+                let result = encrypt(self.peer_public_key, self.peer_secret, content);
 
-                let mut headers = vec![];
+                let mut headers = Vec::new();
 
                 self.add_vapid_headers(&mut headers);
 
@@ -91,39 +98,26 @@ impl<'a> HttpEce<'a> {
                 }
             }
             ContentEncoding::AesGcm => {
-                let result = {
-                    let mut headers = vec![
-                        (
-                            "Encryption",
-                            format!("salt={}", general_purpose::URL_SAFE_NO_PAD.encode(&salt)),
-                        ),
-                        (
-                            "Crypto-Key",
-                            format!(
-                                "dh={}",
-                                general_purpose::URL_SAFE_NO_PAD.encode(self.peer_public_key)
-                            ),
-                        ),
-                    ];
+                let result = self.aesgcm_encrypt(content);
 
-                    let result = encrypt(
-                        self.peer_secret,
-                        salt,
-                        self.peer_public_key,
-                        vec![content.to_vec()].into_iter(),
-                        230,
-                        true,
-                    );
+                let data = result.map_err(|_| WebPushError::InvalidCryptoKeys)?;
 
-                    self.add_vapid_headers(&mut headers);
+                // Get headers exclusive to the aesgcm scheme (Crypto-Key ect.)
+                let mut headers =
+                    data.headers(self.vapid_signature.as_ref().map(|v| v.auth_k.as_slice()));
 
-                    result.map(|encrypted| WebPushPayload {
-                        content: encrypted,
-                        crypto_headers: headers,
-                        content_encoding: self.encoding,
-                    })
-                };
-                result.map_err(|_| WebPushError::InvalidCryptoKeys)
+                self.add_vapid_headers(&mut headers);
+
+                // ECE library base64 encodes content in aesgcm, but not aes128gcm, so decode base64 here to match the 128 API
+                let data = engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(data.body())
+                    .expect("ECE library should always base64 encode");
+
+                Ok(WebPushPayload {
+                    content: data,
+                    crypto_headers: headers,
+                    content_encoding: self.encoding,
+                })
             }
         }
     }
@@ -132,53 +126,41 @@ impl<'a> HttpEce<'a> {
     fn add_vapid_headers(&self, headers: &mut Vec<(&str, String)>) {
         //VAPID uses a special Authorisation header, which contains a ecdhsa key and a jwt.
         if let Some(signature) = &self.vapid_signature {
-            let public_key = general_purpose::URL_SAFE_NO_PAD.encode(&signature.auth_k);
             headers.push((
                 "Authorization",
-                format!("vapid t={}, k={}", signature.auth_t, public_key),
+                format!(
+                    "vapid t={}, k={}",
+                    signature.auth_t,
+                    engine::general_purpose::URL_SAFE_NO_PAD.encode(&signature.auth_k)
+                ),
             ));
         }
+    }
+
+    /// Encrypts the content using the aesgcm encoding.
+    ///
+    /// This is extracted into a function for testing.
+    fn aesgcm_encrypt(&self, content: &[u8]) -> ece::Result<ece::legacy::AesGcmEncryptedBlock> {
+        ece::legacy::encrypt_aesgcm(self.peer_public_key, self.peer_secret, content)
     }
 }
 
 #[cfg(test)]
 mod tests {
-
-    use base64::engine::general_purpose;
-    use base64::{self, engine, Engine};
+    use base64::{self};
+    use base64::{engine, Engine};
     use regex::Regex;
 
-    use crate::helpers::ece::decrypt;
-    use crate::helpers::error::WebPushError;
-    use crate::helpers::http_ece::{ContentEncoding, HttpEce};
-    use crate::helpers::VapidSignature;
-    use crate::helpers::WebPushPayload;
-    use p256::{PublicKey, SecretKey};
-    use rand::rngs::OsRng;
-
-    pub(crate) struct KeyComponents {
-        pub secret_key: SecretKey,
-        pub public_key: Vec<u8>,
-        pub auth: Vec<u8>,
-    }
-
-    fn generate_test_keypair() -> KeyComponents {
-        let secret_key = SecretKey::random(&mut OsRng);
-        let public_key = PublicKey::from_secret_scalar(&secret_key.to_nonzero_scalar());
-        let public_bytes = public_key.to_sec1_bytes().to_vec();
-        let auth = rand::random::<[u8; 16]>().to_vec();
-
-        KeyComponents {
-            secret_key,
-            public_key: public_bytes,
-            auth,
-        }
-    }
+    use crate::helpers::http_ece::HttpEce;
+    use crate::ContentEncoding;
+    use crate::VapidSignature;
+    use crate::WebPushError;
+    use crate::WebPushPayload;
 
     #[test]
     fn test_payload_too_big() {
         let p256dh = engine::general_purpose::URL_SAFE_NO_PAD.decode(
-            "BLMaF9ffKBiWQLCKvTHb6LO8Nb6dcUh6TItC455vu2kElga6PQvUmaFyCdykxY2nOSSL3yKgfbmFLRTUaGv4yV8"
+            "BLMaF9ffKBiWQLCKvTHb6LO8Nb6dcUh6TItC455vu2kElga6PQvUmaFyCdykxY2nOSSL3yKgfbmFLRTUaGv4yV8",
         )
         .unwrap();
         let auth = engine::general_purpose::URL_SAFE_NO_PAD
@@ -197,61 +179,57 @@ mod tests {
     /// Tests that the content encryption is properly reversible while using aes128gcm.
     #[test]
     fn test_payload_encrypts_128() {
-        let test_keys = generate_test_keypair();
+        let (key, auth) = ece::generate_keypair_and_auth_secret().unwrap();
+        let p_key = key.raw_components().unwrap();
+        let p_key = p_key.public_key();
 
-        let http_ece = HttpEce::new(
-            ContentEncoding::Aes128Gcm,
-            &test_keys.public_key,
-            &test_keys.auth,
-            None,
-        );
+        let http_ece = HttpEce::new(ContentEncoding::Aes128Gcm, p_key, &auth, None);
         let plaintext = "Hello world!";
         let ciphertext = http_ece.encrypt(plaintext.as_bytes()).unwrap();
 
         assert_ne!(plaintext.as_bytes(), ciphertext.content);
 
-        let decrypted = decrypt::<&[u8]>(
-            &test_keys.auth,
-            ciphertext.content,
-            Some(plaintext.as_bytes().len()),
+        assert_eq!(
+            String::from_utf8(
+                ece::decrypt(&key.raw_components().unwrap(), &auth, &ciphertext.content).unwrap()
+            )
+            .unwrap(),
+            plaintext
         )
-        .unwrap();
-        assert_eq!(String::from_utf8(decrypted).unwrap(), plaintext)
     }
 
     /// Tests that the content encryption is properly reversible while using aesgcm.
     #[test]
     fn test_payload_encrypts() {
-        let test_keys = generate_test_keypair();
-        let http_ece = HttpEce::new(
-            ContentEncoding::AesGcm,
-            &test_keys.public_key,
-            &test_keys.auth,
-            None,
-        );
+        let (key, auth) = ece::generate_keypair_and_auth_secret().unwrap();
+        let p_key = key.raw_components().unwrap();
+        let p_key = p_key.public_key();
+
+        let http_ece = HttpEce::new(ContentEncoding::AesGcm, p_key, &auth, None);
         let plaintext = "Hello world!";
-        let ciphertext = http_ece.encrypt(plaintext.as_bytes()).unwrap();
+        let ciphertext = http_ece.aesgcm_encrypt(plaintext.as_bytes()).unwrap();
 
-        assert_ne!(plaintext.as_bytes(), ciphertext.content);
+        assert_ne!(plaintext, ciphertext.body());
 
-        let decrypted = decrypt::<&[u8]>(
-            &test_keys.auth,
-            ciphertext.content,
-            Some(plaintext.as_bytes().len()),
+        assert_eq!(
+            String::from_utf8(
+                ece::legacy::decrypt_aesgcm(&key.raw_components().unwrap(), &auth, &ciphertext)
+                    .unwrap()
+            )
+            .unwrap(),
+            plaintext
         )
-        .unwrap();
-        assert_eq!(String::from_utf8(decrypted).unwrap(), plaintext);
     }
 
     fn setup_payload(
         vapid_signature: Option<VapidSignature>,
         encoding: ContentEncoding,
     ) -> WebPushPayload {
-        let p256dh = general_purpose::URL_SAFE_NO_PAD.decode(
+        let p256dh = engine::general_purpose::URL_SAFE_NO_PAD.decode(
             "BLMbF9ffKBiWQLCKvTHb6LO8Nb6dcUh6TItC455vu2kElga6PQvUmaFyCdykxY2nOSSL3yKgfbmFLRTUaGv4yV8",
         )
         .unwrap();
-        let auth = general_purpose::URL_SAFE_NO_PAD
+        let auth = engine::general_purpose::URL_SAFE_NO_PAD
             .decode("xS03Fi5ErfTNH_l9WHE9Ig")
             .unwrap();
 

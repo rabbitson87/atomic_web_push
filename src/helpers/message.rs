@@ -187,29 +187,30 @@ impl<'a> WebPushMessageBuilder<'a> {
 
         use base64::engine;
         if let Some(payload) = self.payload {
-            let p256dh = engine::general_purpose::URL_SAFE_NO_PAD
-                .decode(&self.subscription_info.keys.p256dh)?;
-            let auth = engine::general_purpose::URL_SAFE_NO_PAD
-                .decode(&self.subscription_info.keys.auth)?;
+            if self.vapid_signature.is_some() {
+                let p256dh = engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(&self.subscription_info.keys.p256dh)?;
+                let auth = engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(&self.subscription_info.keys.auth)?;
 
-            let http_ece = HttpEce::new(payload.encoding, &p256dh, &auth, self.vapid_signature);
+                let http_ece = HttpEce::new(payload.encoding, &p256dh, &auth, self.vapid_signature);
 
-            Ok(WebPushMessage {
-                endpoint,
-                ttl: self.ttl,
-                urgency: self.urgency,
-                topic,
-                payload: Some(http_ece.encrypt(payload.content)?),
-            })
-        } else {
-            Ok(WebPushMessage {
-                endpoint,
-                ttl: self.ttl,
-                urgency: self.urgency,
-                topic,
-                payload: None,
-            })
+                return Ok(WebPushMessage {
+                    endpoint,
+                    ttl: self.ttl,
+                    urgency: self.urgency,
+                    topic,
+                    payload: Some(http_ece.encrypt(payload.content)?),
+                });
+            }
         }
+        Ok(WebPushMessage {
+            endpoint,
+            ttl: self.ttl,
+            urgency: self.urgency,
+            topic,
+            payload: None,
+        })
     }
 }
 
