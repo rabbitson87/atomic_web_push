@@ -1,5 +1,9 @@
 # Changes
 
+## 0.3.0
+
+* Add vapid generator.
+
 ## 0.2.0
 
 * Change http_ece into original, add ece_crypto module.

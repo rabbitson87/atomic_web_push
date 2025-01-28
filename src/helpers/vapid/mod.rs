@@ -6,5 +6,6 @@ pub use self::signer::VapidSignature;
 use self::signer::VapidSigner;
 
 pub mod builder;
+pub mod generator;
 mod key;
 mod signer;

@@ -64,6 +64,8 @@ pub enum WebPushError {
     InvalidResponse,
     /// A claim had invalid data
     InvalidClaims,
+    /// If the secret key is invalid
+    InvalidSecretKey,
     Other(ErrorInfo),
 }
 
@@ -127,6 +129,7 @@ impl WebPushError {
             WebPushError::Io(_) => "io_error",
             WebPushError::Other(_) => "other",
             WebPushError::InvalidClaims => "invalidClaims",
+            WebPushError::InvalidSecretKey => "invalidSecretKey",
         }
     }
 }
@@ -155,6 +158,7 @@ impl fmt::Display for WebPushError {
             WebPushError::InvalidCryptoKeys => write!(f, "request has invalid cryptographic keys"),
             WebPushError::Other(info) => write!(f, "other: {}", info),
             WebPushError::InvalidClaims => write!(f, "at least one jwt claim was invalid"),
+            WebPushError::InvalidSecretKey => write!(f, "invalid secret key"),
         }
     }
 }

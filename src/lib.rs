@@ -8,6 +8,7 @@ pub use crate::helpers::message::{
     WebPushPayload,
 };
 pub use crate::helpers::vapid::builder::PartialVapidSignatureBuilder;
+pub use crate::helpers::vapid::generator::VapidKeyGenerator;
 pub use crate::helpers::vapid::{VapidSignature, VapidSignatureBuilder};
 pub use base64::{engine, Engine};
 

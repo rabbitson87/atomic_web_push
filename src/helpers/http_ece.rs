@@ -1,7 +1,6 @@
 //! Payload encryption algorithm
 
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
@@ -14,6 +13,7 @@ use crate::WebPushError;
 use crate::WebPushPayload;
 
 use super::crypto::LocalCryptographer;
+use super::traits::atomic::FlagAtomic;
 
 /// Content encoding profiles.
 #[derive(Debug, PartialEq, Copy, Clone, Default)]
@@ -59,8 +59,8 @@ impl<'a> HttpEce<'a> {
         peer_secret: &'a [u8],
         vapid_signature: Option<VapidSignature>,
     ) -> HttpEce<'a> {
-        if is_initialize().load(Ordering::Relaxed) == false {
-            is_initialize().store(true, Ordering::Relaxed);
+        if !is_initialize().is_true() {
+            is_initialize().set_bool(true);
             set_boxed_cryptographer(Box::new(LocalCryptographer)).unwrap();
         }
         HttpEce {
